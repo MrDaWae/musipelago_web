@@ -63,9 +63,9 @@ function connect(){
 
   let url;
   try{
-    const match=rawHost.match(/^(wss?):\\/\\//i);
+    const match=rawHost.match(/^(wss?):\/\//i);
     const typedProtocol=match?match[1].toLowerCase():null;
-    const address=typedProtocol?rawHost.replace(/^wss?:\\/\\//i,""):rawHost;
+    const address=typedProtocol?rawHost.replace(/^wss?:\/\//i,""):rawHost;
     let scheme;
     if(protocolChoice==="ws"||protocolChoice==="wss"){
       scheme=protocolChoice;
