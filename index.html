@@ -14,7 +14,7 @@
 <div class="layout"><aside class="stack">
 <section class="panel"><h2>1 · Configuration du jeu</h2><div class="field"><label for="gameJson">Fichier JSON du jeu</label><input id="gameJson" type="file" accept=".json,application/json"><div class="help">Charge un fichier de données compatible. Le générateur APWorld n'est pas inclus.</div></div><div class="field"><label for="gameName">Nom du jeu Archipelago</label><input id="gameName" autocomplete="off" placeholder="Nom exact du jeu"></div><div class="row"><button id="clearGameName">Effacer le nom mémorisé</button><span id="gameStatus" class="help">Aucun JSON chargé</span></div></section>
 <section class="panel"><h2>2 · Fichiers audio</h2><div class="field"><label for="audioFiles">Choisir des MP3 / fichiers audio</label><input id="audioFiles" type="file" accept="audio/*,.mp3,.ogg,.flac,.wav,.m4a" multiple></div><div class="row"><button id="matchBtn" class="primary">Associer les pistes</button><button id="clearAudioBtn">Retirer</button></div><p class="help">Les fichiers restent dans ton navigateur : ils ne sont pas envoyés à un serveur.</p><div id="audioStatus" class="status">Aucun fichier audio sélectionné.</div></section>
-<section class="panel"><h2>3 · Connexion Archipelago</h2><div class="two"><div class="field"><label for="apHost">Serveur / WebSocket</label><input id="apHost" placeholder="localhost:38281"></div><div class="field"><label for="apSlot">Nom du slot</label><input id="apSlot" placeholder="Nom du joueur"></div></div><div class="field"><label for="apPassword">Mot de passe (optionnel)</label><input id="apPassword" type="password" autocomplete="current-password"></div><div class="row"><button id="connectBtn" class="primary">Se connecter</button><button id="disconnectBtn" disabled>Déconnecter</button></div><div id="apStatus" class="status" style="margin-top:10px">Connexion non démarrée.</div><p class="help">Le serveur doit accepter les connexions WebSocket depuis le navigateur. Certaines configurations Archipelago nécessitent un relais WebSocket.</p><label class="checkline"><input id="victoryEnabled" type="checkbox"> Victoire si toutes les pistes sont terminées (expérimental)</label></section>
+<section class="panel"><h2>3 · Connexion Archipelago</h2><div class="two"><div class="field"><label for="apHost">Serveur / WebSocket</label><input id="apHost" placeholder="archipelago.gg:65340"><label for="apProtocol" style="margin-top:8px">Protocole</label><select id="apProtocol" style="width:100%;background:#11131e;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px"><option value="auto">Automatique (WSS avec file:// ou HTTPS)</option><option value="ws">ws:// non sécurisé</option><option value="wss">wss:// sécurisé</option></select></div><div class="field"><label for="apSlot">Nom du slot</label><input id="apSlot" placeholder="Nom du joueur"></div></div><div class="field"><label for="apPassword">Mot de passe (optionnel)</label><input id="apPassword" type="password" autocomplete="current-password"></div><div class="row"><button id="connectBtn" class="primary">Se connecter</button><button id="disconnectBtn" disabled>Déconnecter</button></div><div id="apStatus" class="status" style="margin-top:10px">Connexion non démarrée.</div><p class="help">Le serveur doit accepter les connexions WebSocket depuis le navigateur. Certaines configurations Archipelago nécessitent un relais WebSocket.</p><label class="checkline"><input id="victoryEnabled" type="checkbox"> Victoire si toutes les pistes sont terminées (expérimental)</label></section>
 </aside><main class="stack"><section class="panel"><div class="row" style="justify-content:space-between"><div><h2>Bibliothèque</h2><div id="librarySummary" class="help">Charge un JSON et des fichiers audio.</div></div><button id="demoBtn">Mode démo</button></div><div id="trackList" class="list"><div class="status">Aucune piste. Charge le JSON ou utilise le mode démo.</div></div><div class="player"><div class="help">LECTURE EN COURS</div><div id="nowTitle" class="now">Aucune piste sélectionnée</div><div id="nowArtist" class="muted">—</div><div class="controls"><button id="prevBtn" aria-label="Précédent">◀</button><button id="playBtn" class="primary">▶ Lire</button><button id="nextBtn" aria-label="Suivant">▶|</button></div><audio id="audio" controls preload="metadata"></audio><div id="playStatus" class="help">Sélectionne une piste pour l'écouter.</div></div></section><section class="panel"><h2>Journal Archipelago</h2><div id="log" class="list" style="max-height:190px"><div class="help">Les événements apparaîtront ici.</div></div></section></main></div>
 <p class="foot">Portage web non officiel et expérimental. Le chargement audio est local. La compatibilité des données, les identifiants de locations, la logique des objets et la parité avec le client desktop restent à valider avec une vraie partie.</p></div>
 <script>
@@ -44,8 +44,110 @@ $("nextBtn").addEventListener("click",()=>{if(state.tracks.length)play((state.cu
 $("audio").addEventListener("play",()=>$("playBtn").textContent="❚❚ Pause");$("audio").addEventListener("pause",()=>$("playBtn").textContent="▶ Lire");
 $("audio").addEventListener("ended",()=>{const t=state.tracks[state.current];if(t){t.done=true;render();checkLocation(t);checkVictory()}if(state.current+1<state.tracks.length)play(state.current+1)});
 function send(p){if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify(p))}
-function connect(){saveGameName();const host=$("apHost").value.trim(),slot=$("apSlot").value.trim(),game=$("gameName").value.trim();if(!host||!slot){status("Renseigne l'adresse du serveur et le nom du slot.","bad");return}if(!game){status("Le nom du jeu est obligatoire.","bad");return}state.gameName=game;disconnect(false);let url;try{url=/^wss?:\/\//i.test(host)?host:(location.protocol==="https:"?"wss://":"ws://")+host;if(location.protocol==="https:"&&/^ws:\/\//i.test(url)){url=url.replace(/^ws:\/\//i,"wss://");log("Page HTTPS : passage automatique de ws:// à wss://. Le serveur doit prendre en charge TLS/WSS.")}const parsed=new URL(url);if(!["ws:","wss:"].includes(parsed.protocol))throw new Error("Le protocole doit être ws:// ou wss://")}catch(e){status("Adresse WebSocket invalide : "+e.message,"bad");return}try{state.ws=new WebSocket(url)}catch(e){status("Impossible de créer la connexion WebSocket : "+e.message,"bad");return}status("Connexion au serveur…");$("connectBtn").disabled=true;$("disconnectBtn").disabled=false;state.ws.onopen=()=>{send([{cmd:"RoomInfo"}]);log("WebSocket ouvert : "+url)};state.ws.onmessage=e=>{let data;try{data=JSON.parse(e.data)}catch{return}for(const p of(Array.isArray(data)?data:[data]))handlePacket(p,game,slot)};state.ws.onerror=()=>{const secure=location.protocol==="https:";status(secure?"Échec WebSocket sécurisé (WSS). Vérifie que le serveur ou le proxy prend en charge TLS sur ce port. Un serveur ws:// seul ne peut pas être joint directement depuis cette page HTTPS.":"Échec WebSocket. Vérifie l'adresse, le port, le serveur et le pare-feu.","bad");log("Erreur WebSocket sur "+url+(secure?" (page HTTPS : WSS requis)":""))};state.ws.onclose=()=>{state.connected=false;$("connectBtn").disabled=false;$("disconnectBtn").disabled=true;status("Connexion fermée.")}}
-function handlePacket(p,game,slot){if(!p?.cmd)return;switch(p.cmd){case"RoomInfo":if(!Object.prototype.hasOwnProperty.call(p.games||{},game))log("Attention : le jeu « "+game+" » n'est pas annoncé dans RoomInfo.");send([{cmd:"Connect",name:slot,game,password:$("apPassword").value||null,uuid:"musipelago-web",items_handling:7,slot_data:true,tags:["AP"],version:{major:0,minor:1,build:0,class:"Version"}}]);break;case"Connected":state.connected=true;status("Connecté à Archipelago · "+slot,"good");$("connectBtn").disabled=true;$("disconnectBtn").disabled=false;log("Connexion Archipelago établie");break;case"ConnectionRefused":state.connected=false;status("Connexion refusée : "+(p.errors||[]).join(", "),"bad");$("connectBtn").disabled=false;$("disconnectBtn").disabled=true;log("Connexion refusée : "+(p.errors||[]).join(", "));break;case"ReceivedItems":log((p.items||[]).length+" objet(s) reçu(s)");break;case"Print":case"PrintJSON":log(p.text||"Message Archipelago reçu");break;case"RoomUpdate":log("Mise à jour de la salle");break;case"InvalidPacket":log("Paquet invalide : "+JSON.stringify(p.errors||p));break;case"DataPackage":log("DataPackage reçu");break;default:break}}
+function connect(){
+  saveGameName();
+  const rawHost=$("apHost").value.trim();
+  const slot=$("apSlot").value.trim();
+  const game=$("gameName").value.trim();
+  const password=$("apPassword").value||null;
+  const protocolChoice=$("apProtocol").value;
+
+  if(!rawHost||!slot){
+    status("Renseigne l'adresse du serveur et le nom du slot.","bad");
+    return;
+  }
+  if(!game){
+    status("Le nom du jeu est obligatoire.","bad");
+    return;
+  }
+
+  let url;
+  try{
+    const match=rawHost.match(/^(wss?):\\/\\//i);
+    const typedProtocol=match?match[1].toLowerCase():null;
+    const address=typedProtocol?rawHost.replace(/^wss?:\\/\\//i,""):rawHost;
+    let scheme;
+    if(protocolChoice==="ws"||protocolChoice==="wss"){
+      scheme=protocolChoice;
+    }else if(typedProtocol){
+      scheme=typedProtocol;
+    }else{
+      // Les fichiers file:// n'ont pas de transport web sécurisé implicite :
+      // on choisit WSS par défaut, avec possibilité de forcer ws:// ci-dessus.
+      scheme=location.protocol==="http:"?"ws":"wss";
+    }
+    url=scheme+"://"+address;
+    const parsed=new URL(url);
+    if(!["ws:","wss:"].includes(parsed.protocol))throw new Error("Le protocole doit être ws:// ou wss://.");
+    if(!parsed.hostname)throw new Error("Le nom d'hôte est manquant.");
+    if(parsed.username||parsed.password)throw new Error("Ne mets pas d'identifiants dans l'URL du serveur.");
+    if(parsed.hash)throw new Error("L'adresse du serveur ne doit pas contenir de fragment (#).");
+    url=parsed.href;
+  }catch(e){
+    status("Adresse du serveur invalide : "+e.message,"bad");
+    log("Adresse WebSocket invalide : "+e.message);
+    return;
+  }
+
+  state.gameName=game;
+  disconnect(false);
+  let socket;
+  try{
+    socket=new WebSocket(url);
+  }catch(e){
+    status("Le navigateur n'a pas pu démarrer la connexion : "+e.message,"bad");
+    log("Création WebSocket impossible : "+e.message);
+    return;
+  }
+  state.ws=socket;
+  state.connected=false;
+  socket.hadError=false;
+  status("Connexion à "+url+"…");
+  $("connectBtn").disabled=true;
+  $("disconnectBtn").disabled=false;
+  log("Tentative WebSocket : "+url);
+
+  socket.onopen=()=>{
+    if(state.ws!==socket)return;
+    log("WebSocket ouvert ; demande des informations de salle.");
+    send([{cmd:"RoomInfo"}]);
+  };
+  socket.onmessage=e=>{
+    if(state.ws!==socket)return;
+    let data;
+    try{
+      data=JSON.parse(e.data);
+    }catch(err){
+      log("Message WebSocket ignoré : JSON invalide.");
+      return;
+    }
+    for(const p of(Array.isArray(data)?data:[data]))handlePacket(p,game,slot,password);
+  };
+  socket.onerror=()=>{
+    if(state.ws!==socket)return;
+    socket.hadError=true;
+    status("Échec de la connexion WebSocket. Le navigateur ne donne pas la cause exacte : vérifie le protocole choisi, le port, le certificat TLS (pour WSS), le serveur et les éventuelles restrictions réseau.","bad");
+    log("Erreur WebSocket sur "+url+" ; la cause précise n'est pas exposée par le navigateur.");
+  };
+  socket.onclose=e=>{
+    if(state.ws!==socket)return;
+    state.connected=false;
+    state.ws=null;
+    $("connectBtn").disabled=false;
+    $("disconnectBtn").disabled=true;
+    const detail="Code "+e.code+(e.reason?" · "+e.reason:"");
+    if(socket.hadError){
+      status("Connexion fermée après une erreur WebSocket ("+detail+").","bad");
+    }else if(e.wasClean){
+      status("Connexion fermée ("+detail+").");
+    }else{
+      status("Connexion interrompue ("+detail+"). Vérifie le serveur et le protocole.","bad");
+    }
+    log("WebSocket fermé : "+detail+(e.wasClean?" · fermeture propre":" · fermeture non propre"));
+  };
+}
+
+function handlePacket(p,game,slot,password){if(!p?.cmd)return;switch(p.cmd){case"RoomInfo":if(!Object.prototype.hasOwnProperty.call(p.games||{},game))log("Attention : le jeu « "+game+" » n'est pas annoncé dans RoomInfo.");send([{cmd:"Connect",name:slot,game,password,uuid:"musipelago-web",items_handling:7,slot_data:true,tags:["AP"],version:{major:0,minor:1,build:0,class:"Version"}}]);break;case"Connected":state.connected=true;status("Connecté à Archipelago · "+slot,"good");$("connectBtn").disabled=true;$("disconnectBtn").disabled=false;log("Connexion Archipelago établie");break;case"ConnectionRefused":state.connected=false;status("Connexion refusée : "+(p.errors||[]).join(", "),"bad");$("connectBtn").disabled=false;$("disconnectBtn").disabled=true;log("Connexion refusée : "+(p.errors||[]).join(", "));break;case"ReceivedItems":log((p.items||[]).length+" objet(s) reçu(s)");break;case"Print":case"PrintJSON":log(p.text||"Message Archipelago reçu");break;case"RoomUpdate":log("Mise à jour de la salle");break;case"InvalidPacket":log("Paquet invalide : "+JSON.stringify(p.errors||p));break;case"DataPackage":log("DataPackage reçu");break;default:break}}
 function checkLocation(t){if(!state.connected)return;const id=Number(t.locationId);if(Number.isInteger(id)&&id>=0&&!state.checked.has(id)){state.checked.add(id);send([{cmd:"LocationChecks",locations:[id]}]);log("LocationChecks envoyé : "+id)}else log("Piste terminée localement ; identifiant de location numérique non défini dans le JSON.")}
 function checkVictory(){if($("victoryEnabled").checked&&state.connected&&state.tracks.length&&state.tracks.every(t=>t.done)){send([{cmd:"StatusUpdate",status:30}]);log("Demande de victoire envoyée (règle expérimentale).")}}
 function disconnect(close=true){if(state.ws&&close){state.ws.onclose=null;state.ws.close()}state.ws=null;state.connected=false;$("connectBtn").disabled=false;$("disconnectBtn").disabled=true;if(close)status("Déconnecté.");else status("Connexion en cours…")}
